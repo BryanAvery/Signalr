@@ -1,0 +1,164 @@
+﻿@{
+    ViewBag.Title = "Home Page";
+}
+
+<div class="jumbotron">
+    <h1>SignalR &#8211; the right way</h1>
+    <p>ASP.NET SignalR is a library for ASP.NET developers that makes developing real-time web functionality easy. SignalR allows bi-directional communication between server and client. Servers can now push content to connected clients instantly as it becomes available. SignalR supports Web Sockets and falls back to other compatible techniques for older browsers. SignalR includes APIs for connection management (for instance, connect and disconnect events), grouping connections, and authorisation.</p>
+    <p><a href="https://www.asp.net/signalr" class="btn btn-primary btn-lg">Learn more &raquo;</a></p>
+</div>
+
+<div class="row">
+    <header class="entry-header">
+        <h1 class="entry-title">SignalR &#8211; the right way</h1>
+    </header><!-- .entry-header -->
+
+    <div class="entry-content">
+        <p>It has been quite a while since SignalR has been around since 2014, first what is SignalR?</p>
+        <p>ASP.NET SignalR is a library for ASP.NET developers that makes developing real-time web functionality easy. SignalR allows bi-directional communication between server and client. Servers can now push content to connected clients instantly as it becomes available. SignalR supports Web Sockets and falls back to other compatible techniques for older browsers. SignalR includes APIs for connection management (for instance, connect and disconnect events), grouping connections, and authorisation.</p>
+        <p>For further information check <a href="https://www.asp.net/signalr">https://www.asp.net/signalr</a></p>
+        <p>There are a lot of different samples and information on how to use SignalR, but I&#8217;m always a firm believer of KISS (Keep It Simple Stupid).</p>
+        <p>There are two primary sides to SignalR, the client side and the server hubs, here I have created an MVC application with Individual User Accounts for Authentication.</p>
+        <p>First, add the SignalR NuGet package</p>
+<pre>Install-Package Microsoft.AspNet.SignalR</pre>
+        <p>Then we need to map the Hubs connection to the application.</p>
+        <p>To enable SignalR in your application, create a class called Startup with the following:</p>
+<pre>using Microsoft.Owin;
+using Owin;
+using MyWebApplication;
+namespace MyWebApplication
+{
+ public class Startup
+ {
+   public void Configuration(IAppBuilder app)
+   {
+     app.MapSignalR();
+   }
+ }
+}</pre>
+        <p>What is important here is that app.MapSignalR() is the last to be called, and this is because any changes to the <em>app </em>need to be done before you call the mapping.  The incorrect order got me once when we had some custom Authentication, and it was not being passed to SignalR hubs.</p>
+        <p>I won&#8217;t be going into how you go about setting up the step by step process, as this is documented in many places, and also comes in the readme.txt file as part of the NuGet package.</p>
+        <p>What I will be adding is the Authorization to the project, which is covered by Microsoft in <a href="https://docs.microsoft.com/en-us/aspnet/signalr/overview/security/hub-authorization" target="_blank" rel="noopener">Authentication and Authorization for SignalR Hubs</a>.</p>
+        <p>What is important to note how the connection is handled, we are using a class called <strong>SignalRConnectionManager</strong>, and this controls the connections based on the username coming from the context and the connection id which also comes from the context.</p>
+        <p>&nbsp;</p>
+<pre>public class SignalRConnectionManager&lt;T&gt; : IDisposable
+ {
+ private readonly ConcurrentDictionary&lt;T, HashSet&lt;string&gt;&gt; _connections = new ConcurrentDictionary&lt;T, HashSet&lt;string&gt;&gt;();
+public int Count { get { return _connections.Count; } }
+/// &lt;summary&gt;
+ /// Attempts to add the specified userid and connectionid
+ /// &lt;/summary&gt;
+ public void Add(T userid, string connectionid)
+ {
+ HashSet&lt;string&gt; connections = _connections.GetOrAdd(userid, new HashSet&lt;string&gt;());
+lock (connections)
+ {
+ connections.Add(connectionid);
+ }
+ }
+public IEnumerable&lt;string&gt; Connections(T userid)
+ {
+ HashSet&lt;string&gt; connections;
+ if (_connections.TryGetValue(userid, out connections))
+ {
+ return connections;
+ }
+return Enumerable.Empty&lt;string&gt;();
+ }
+public IEnumerable&lt;T&gt; UserIds()
+ {
+ return _connections.Keys;
+ }
+/// &lt;summary&gt;
+ /// Attempts to remove a connectionid that has the specified userid
+ /// &lt;/summary&gt;
+ public void Remove(T userid, string connectionid)
+ {
+ HashSet&lt;string&gt; connections;
+ if (!_connections.TryGetValue(userid, out connections))
+ {
+ return;
+ }
+lock (connections)
+ {
+ connections.Remove(connectionid);
+if (connections.Count == 0)
+ {
+ HashSet&lt;string&gt; emptyConnections;
+ _connections.TryRemove(userid, out emptyConnections);
+ }
+ }
+ }
+#region IDisposable Support
+private bool disposedValue = false; // To detect redundant calls
+protected virtual void Dispose(bool disposing)
+ {
+ if (!disposedValue)
+ {
+ if (disposing)
+ {
+ _connections.Clear();
+ }
+// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+ // TODO: set large fields to null.
+disposedValue = true;
+ }
+ }
+// This code added to correctly implement the disposable pattern.
+ public void Dispose()
+ {
+ // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+ Dispose(true);
+ // TODO: uncomment the following line if the finalizer is overridden above.
+ // GC.SuppressFinalize(this);
+ }
+#endregion IDisposable Support
+ }</pre>
+        <h2>Client Code</h2>
+        <p>In my case I&#8217;m going to be looking at JavaScript within a C# MVC application, which looks like this:</p>
+<pre>&lt;p&gt;SignalR&lt;/p&gt;
+&lt;!--The jQuery library is required. --&gt;
+&lt;script src="~/Scripts/jquery-1.10.2.js"&gt;&lt;/script&gt;
+&lt;!--Reference the SignalR library. --&gt;
+&lt;script src="~/Scripts/jquery.signalR-2.2.3.min.js"&gt;&lt;/script&gt;
+&lt;!--Reference the auto generated SignalR hub script. --&gt;
+&lt;script src="~/signalr/hubs"&gt;&lt;/script&gt;
+&lt;!--Add script to update the page and send messages - SignalR - HeartBeat.--&gt;
+&lt;script type="text/javascript"&gt;
+ $(function () {
+ // Declare a proxy to reference the hub.
+ var heartBeat = $.connection.heartBeatHub;
+heartBeat.client.broadcastMessage = function (html) {
+ $('#message').html(html).fadeIn();
+ };
+if ($.connection.hub &amp;&amp; $.connection.hub.state === $.signalR.connectionState.disconnected) {
+ $.connection.hub.start()
+ .done(function () {
+ console.log('SignalR now connected, connection ID=' + $.connection.hub.id);
+ heartBeat.server.send('Heart beat listening');
+ console.log("Heart beat started")
+ })
+ .fail(function () { console.log('Could not Connect!'); });
+ }
+ });
+&lt;/script&gt;
+&lt;div id="message"&gt;
+&lt;/div&gt;</pre>
+        <p>two important lines in this code are:</p>
+        <p>Reference the auto generated SignalR hub script</p>
+<pre>&lt;script src="~/signalr/hubs"&gt;&lt;/script&gt;</pre>
+        <p>Declaring the proxy to reference the hub, you&#8217;ll notice the case of the letter &#8216;h&#8217; is different the the C# code, this is important otherwise you will get a JavaScript error in your browser.</p>
+<pre>var heartBeat = $.connection.heartBeatHub;</pre>
+        <p>Another important thing to note is that you should only start the hub once, no matter how many SignalR endpoints you have, and you place the listening code within the done section of hub, I&#8217;ve commented out another listening hub in this sample code:</p>
+<pre>if ($.connection.hub &amp;&amp; $.connection.hub.state === $.signalR.connectionState.disconnected) {
+ $.connection.hub.start()
+ .done(function () {
+ console.log('SignalR now connected, connection ID=' + $.connection.hub.id);
+ heartBeat.server.send('Heart beat listening');
+ console.log("Heart beat started")
+ //anotherHub.server.send('Another hub listening');
+ })
+ .fail(function () { console.log('Could not Connect!'); });
+ }</pre>
+        <p>That is it for now, a good clean SignalR project</p>
+    </div>

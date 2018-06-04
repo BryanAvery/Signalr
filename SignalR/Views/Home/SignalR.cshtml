@@ -1,0 +1,39 @@
+﻿@{
+    ViewBag.Title = "SignalR";
+}
+
+<h2>@ViewBag.Title.</h2>
+<h3>@ViewBag.Message</h3>
+
+<p>SignalR</p>
+<!--The jQuery library is required. -->
+<script src="~/Scripts/jquery-1.10.2.js"></script>
+<!--Reference the SignalR library. -->
+<script src="~/Scripts/jquery.signalR-2.2.3.min.js"></script>
+<!--Reference the auto generated SignalR hub script. -->
+<script src="~/signalr/hubs"></script>
+
+<!--Add script to update the page and send messages - SignalR - HeartBeat.-->
+<script type="text/javascript">
+        $(function () {
+            // Declare a proxy to reference the hub.
+            var heartBeat = $.connection.heartBeatHub;
+
+            heartBeat.client.broadcastMessage = function (html) {
+                $('#message').html(html).fadeIn();
+            };
+
+            if ($.connection.hub && $.connection.hub.state === $.signalR.connectionState.disconnected) {
+                $.connection.hub.start()
+                    .done(function () {
+                        console.log('SignalR now connected, connection ID=' + $.connection.hub.id);
+                        heartBeat.server.send('Heart beat listening');
+                        console.log("Heart beat started")
+                        //anotherHub.server.send('Another hub listening');
+                    })
+                    .fail(function () { console.log('Could not Connect!'); });
+            }
+        });
+</script>
+<div id="message">
+</div>
